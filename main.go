@@ -97,7 +97,7 @@ func initializeLogger(logFile string) (*slog.Logger, closeFunc, error) {
 			return nil
 		}
 
-		handlers = append(handlers, slog.NewTextHandler(bufferedFile, &slog.HandlerOptions{
+		handlers = append(handlers, slog.NewJSONHandler(bufferedFile, &slog.HandlerOptions{
 			Level: slog.LevelInfo, //INFO and above to FILE
 		}))
 		closeErrors = append(closeErrors, closeFunction)
