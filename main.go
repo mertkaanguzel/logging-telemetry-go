@@ -12,7 +12,9 @@ import (
 	"syscall"
 	"time"
 
+	"boot.dev/linko/internal/linkoerr"
 	"boot.dev/linko/internal/store"
+	pkgerr "github.com/pkg/errors"
 )
 
 func main() {
@@ -75,7 +77,8 @@ type closeFunc func() error
 func initializeLogger(logFile string) (*slog.Logger, closeFunc, error) {
 	handlers := []slog.Handler{
 		slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{ //DEBUG and above to STDERR
-			Level: slog.LevelDebug,
+			Level:       slog.LevelDebug,
+			ReplaceAttr: replaceAttr,
 		}),
 	}
 	closeErrors := []closeFunc{}
@@ -98,7 +101,8 @@ func initializeLogger(logFile string) (*slog.Logger, closeFunc, error) {
 		}
 
 		handlers = append(handlers, slog.NewJSONHandler(bufferedFile, &slog.HandlerOptions{
-			Level: slog.LevelInfo, //INFO and above to FILE
+			Level:       slog.LevelInfo, //INFO and above to FILE
+			ReplaceAttr: replaceAttr,
 		}))
 		closeErrors = append(closeErrors, closeFunction)
 	}
@@ -112,4 +116,32 @@ func initializeLogger(logFile string) (*slog.Logger, closeFunc, error) {
 		return errors.Join(errs...)
 	}
 	return slog.New(slog.NewMultiHandler(handlers...)), closeError, nil
+}
+
+type stackTracer interface {
+	error
+	StackTrace() pkgerr.StackTrace
+}
+
+func replaceAttr(groups []string, a slog.Attr) slog.Attr {
+	if a.Key == "error" {
+		err, ok := a.Value.Any().(error)
+		if !ok {
+			return a
+		}
+		attrs := linkoerr.Attrs(err)
+		attrs = append(attrs, slog.Attr{
+			Key:   "message",
+			Value: slog.StringValue(err.Error()),
+		})
+		if stackErr, ok := errors.AsType[stackTracer](err); ok {
+			attrs := linkoerr.Attrs(err)
+			attrs = append(attrs, slog.Attr{
+				Key:   "stack_trace",
+				Value: slog.StringValue(fmt.Sprintf("%+v", stackErr.StackTrace())),
+			})
+		}
+		return slog.GroupAttrs("error", attrs...)
+	}
+	return a
 }
