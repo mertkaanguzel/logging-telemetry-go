@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"boot.dev/linko/internal/build"
 	"boot.dev/linko/internal/linkoerr"
 	"boot.dev/linko/internal/store"
 	pkgerr "github.com/pkg/errors"
@@ -115,7 +116,20 @@ func initializeLogger(logFile string) (*slog.Logger, closeFunc, error) {
 		}
 		return errors.Join(errs...)
 	}
-	return slog.New(slog.NewMultiHandler(handlers...)), closeError, nil
+
+	logger := slog.New(slog.NewMultiHandler(handlers...))
+
+	env := os.Getenv("ENV")
+	hostname, _ := os.Hostname()
+
+	logger = logger.With(
+		slog.String("git_sha", build.GitSHA),
+		slog.String("build_time", build.BuildTime),
+		slog.String("env", env),
+		slog.String("hostname", hostname),
+	)
+
+	return logger, closeError, nil
 }
 
 type stackTracer interface {
@@ -153,7 +167,6 @@ func errorAttrs(err error) []slog.Attr {
 		Value: slog.StringValue(err.Error()),
 	})
 	if stackErr, ok := errors.AsType[stackTracer](err); ok {
-		attrs := linkoerr.Attrs(err)
 		attrs = append(attrs, slog.Attr{
 			Key:   "stack_trace",
 			Value: slog.StringValue(fmt.Sprintf("%+v", stackErr.StackTrace())),
